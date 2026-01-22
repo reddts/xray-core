@@ -148,7 +148,10 @@ jobs:
 
       - name: Copy README.md & LICENSE
         run: |
-          mv -f resources/* build_assets
+          mkdir -p build_assets
+          if [ -d resources ] && compgen -G "resources/*" > /dev/null; then
+            mv -f resources/* build_assets
+          fi
           cp ${GITHUB_WORKSPACE}/README.md ./build_assets/README.md
           cp ${GITHUB_WORKSPACE}/LICENSE ./build_assets/LICENSE
 
