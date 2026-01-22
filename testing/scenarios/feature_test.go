@@ -2,8 +2,11 @@ package scenarios
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
+	stdnet "net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
@@ -541,6 +544,14 @@ func TestUDPConnection(t *testing.T) {
 }
 
 func TestDomainSniffing(t *testing.T) {
+	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer tlsServer.Close()
+
+	tlsAddr := tlsServer.Listener.Addr().(*stdnet.TCPAddr)
+
 	sniffingPort := tcp.PickPort()
 	httpPort := tcp.PickPort()
 	serverConfig := &core.Config{
@@ -557,7 +568,7 @@ func TestDomainSniffing(t *testing.T) {
 				}),
 				ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
 					Address:  net.NewIPOrDomain(net.LocalHostIP),
-					Port:     443,
+					Port:     uint32(net.Port(tlsAddr.Port)),
 					Networks: []net.Network{net.Network_TCP},
 				}),
 			},
@@ -619,13 +630,16 @@ func TestDomainSniffing(t *testing.T) {
 			Proxy: func(req *http.Request) (*url.URL, error) {
 				return url.Parse("http://127.0.0.1:" + httpPort.String())
 			},
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		}
 
 		client := &http.Client{
 			Transport: transport,
 		}
 
-		resp, err := client.Get("https://www.github.com/")
+		resp, err := client.Get("https://localhost:" + net.Port(tlsAddr.Port).String() + "/")
 		common.Must(err)
 		if resp.StatusCode != 200 {
 			t.Error("unexpected status code: ", resp.StatusCode)
